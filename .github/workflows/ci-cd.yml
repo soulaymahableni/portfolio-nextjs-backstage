@@ -1,0 +1,97 @@
+name: CI-CD Portfolio
+
+env:
+  APP_NAME: portfolio-nextjs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version de l'image (ex: v2, v1.1). Vide = v<numéro du run>"
+        required: false
+        default: ""
+
+jobs:
+  build-and-push:
+    name: Build + Image Docker + Push Docker Hub
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Calcul de la version
+        id: version
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then V="v${{ github.run_number }}"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version : $V"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build de l'application Next.js
+        run: |
+          npm install
+          npm run build
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push de l'image Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}:${{ steps.version.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}:latest
+
+      - name: Résumé
+        run: |
+          echo "### Image publiée : ${{ env.APP_NAME }}:${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-local:
+    name: Déploiement local + Health check
+    needs: build-and-push
+    runs-on: self-hosted
+    env:
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      TAG: ${{ needs.build-and-push.outputs.version }}
+    steps:
+      - name: Récupération du code (docker-compose.yml)
+        uses: actions/checkout@v4
+
+      - name: Mise à jour du déploiement (docker compose)
+        shell: bash
+        run: |
+          docker compose pull
+          docker compose up -d --remove-orphans
+          docker compose ps
+
+      - name: Vérification de santé
+        shell: bash
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000 > /dev/null; then
+              echo "Application OK"
+              exit 0
+            fi
+            echo "Attente... ($i)"; sleep 2
+          done
+          echo "Health check KO"; docker compose logs; exit 1
+
+      - name: URL de l'application
+        shell: bash
+        run: |
+          echo "### ✅ Version $TAG déployée : http://localhost:3000" >> "$GITHUB_STEP_SUMMARY"
+

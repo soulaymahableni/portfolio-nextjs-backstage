@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: portfolio-nextjs
+  title: Portfolio de Hablani Soulayma
+  description: Mon portfolio personnel
+  tags: [nextjs, docker, portfolio]
+  annotations:
+    github.com/project-slug: soulaymahableni/portfolio-nextjs-backstage
+  links:
+    - url: http://localhost:3000
+      title: Application (local)
+      icon: web
+    - url: https://hub.docker.com/r/hablani/portfolio-nextjs
+      title: Image Docker Hub
+      icon: dashboard
+    - url: https://github.com/soulaymahableni/portfolio-nextjs-backstage/actions
+      title: Pipeline CI/CD
+      icon: dashboard
+spec:
+  type: website
+  lifecycle: production
+  owner: group:default/guest
